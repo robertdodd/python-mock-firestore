@@ -154,7 +154,8 @@ class TestCollectionReference(TestCase):
         fs._data = {'foo': {
             'first': {'field': ['val4']},
             'second': {'field': ['val3', 'val2']},
-            'third': {'field': ['val3', 'val2', 'val1']}
+            'third': {'field': ['val3', 'val2', 'val1']},
+            'fourth': {'field': None}
         }}
 
         contains_any_docs = list(fs.collection('foo').where('field', 'array_contains_any', ['val1', 'val4']).stream())
