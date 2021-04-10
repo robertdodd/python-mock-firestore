@@ -1,9 +1,29 @@
 from unittest import TestCase
 
+from google.cloud import firestore
+
 from mockfirestore import MockFirestore, NotFound
 
 
 class TestDocumentReference(TestCase):
+
+    def test_get_document_by_path(self):
+        fs = MockFirestore()
+        fs._data = {'foo': {
+            'first': {'id': 1}
+        }}
+        doc = fs.document('foo/first').get()
+        self.assertEqual({'id': 1}, doc.to_dict())
+        self.assertEqual('first', doc.id)
+
+    def test_set_document_by_path(self):
+        fs = MockFirestore()
+        fs._data = {}
+        doc_content = {'id': 'bar'}
+        fs.document('foo/doc1/bar/doc2').set(doc_content)
+        doc = fs.document('foo/doc1/bar/doc2').get().to_dict()
+        self.assertEqual(doc_content, doc)
+        
     def test_document_get_returnsDocument(self):
         fs = MockFirestore()
         fs._data = {'foo': {
@@ -85,6 +105,12 @@ class TestDocumentReference(TestCase):
         doc = fs.collection('foo').document('first').get().to_dict()
         self.assertEqual({'id': 1, 'updated': True}, doc)
 
+    def test_document_set_mergeNewValueForNonExistentDoc(self):
+        fs = MockFirestore()
+        fs.collection('foo').document('first').set({'updated': True}, merge=True)
+        doc = fs.collection('foo').document('first').get().to_dict()
+        self.assertEqual({'updated': True}, doc)
+
     def test_document_set_overwriteValue(self):
         fs = MockFirestore()
         fs._data = {'foo': {
@@ -120,7 +146,7 @@ class TestDocumentReference(TestCase):
         fs.collection('foo').document('first').update({'id': 2})
         doc = fs.collection('foo').document('first').get().to_dict()
         self.assertEqual({'id': 2}, doc)
-    
+
     def test_document_update_documentDoesNotExist(self):
         fs = MockFirestore()
         with self.assertRaises(NotFound):
@@ -138,6 +164,45 @@ class TestDocumentReference(TestCase):
         update_doc['nested']['id'] = 3
         doc = fs.collection('foo').document('first').get().to_dict()
         self.assertEqual({'nested': {'id': 2}}, doc)
+
+    def test_document_update_transformerIncrementBasic(self):
+        fs = MockFirestore()
+        fs._data = {'foo': {
+            'first': {'count': 1}
+        }}
+        fs.collection('foo').document('first').update({'count': firestore.Increment(2)})
+
+        doc = fs.collection('foo').document('first').get().to_dict()
+        self.assertEqual(doc, {'count': 3})
+
+    def test_document_update_transformerIncrementNested(self):
+        fs = MockFirestore()
+        fs._data = {'foo': {
+            'first': {
+                'nested': {'count': 1},
+                'other': {'likes': 0},
+            }
+        }}
+        fs.collection('foo').document('first').update({
+            'nested': {'count': firestore.Increment(-1)},
+            'other': {'likes': firestore.Increment(1), 'smoked': 'salmon'},
+        })
+
+        doc = fs.collection('foo').document('first').get().to_dict()
+        self.assertEqual(doc, {
+            'nested': {'count': 0},
+            'other': {'likes': 1, 'smoked': 'salmon'}
+        })
+
+    def test_document_update_transformerIncrementNonExistent(self):
+        fs = MockFirestore()
+        fs._data = {'foo': {
+            'first': {'spicy': 'tuna'}
+        }}
+        fs.collection('foo').document('first').update({'count': firestore.Increment(1)})
+
+        doc = fs.collection('foo').document('first').get().to_dict()
+        self.assertEqual(doc, {'count': 1, 'spicy': 'tuna'})
 
     def test_document_delete_documentDoesNotExistAfterDelete(self):
         fs = MockFirestore()
@@ -157,3 +222,40 @@ class TestDocumentReference(TestCase):
         document = coll.document('first')
         self.assertIs(document.parent, coll)
 
+    def test_document_update_transformerArrayUnionBasic(self):
+        fs = MockFirestore()
+        fs._data = {"foo": {"first": {"arr": [1, 2]}}}
+        fs.collection("foo").document("first").update(
+            {"arr": firestore.ArrayUnion([3, 4])}
+        )
+        doc = fs.collection("foo").document("first").get().to_dict()
+        self.assertEqual(doc["arr"], [1, 2, 3, 4])
+
+    def test_document_update_transformerArrayUnionNested(self):
+        fs = MockFirestore()
+        fs._data = {'foo': {
+            'first': {
+                'nested': {'arr': [1]},
+                'other': {'labels': ["a"]},
+            }
+        }}
+        fs.collection('foo').document('first').update({
+            'nested': {'arr': firestore.ArrayUnion([2])},
+            'other': {'labels': firestore.ArrayUnion(["b"]), 'smoked': 'salmon'},
+        })
+
+        doc = fs.collection('foo').document('first').get().to_dict()
+        self.assertEqual(doc, {
+            'nested': {'arr': [1, 2]},
+            'other': {'labels': ["a", "b"], 'smoked': 'salmon'}
+        })
+
+    def test_document_update_transformerArrayUnionNonExistent(self):
+        fs = MockFirestore()
+        fs._data = {'foo': {
+            'first': {'spicy': 'tuna'}
+        }}
+        fs.collection('foo').document('first').update({'arr': firestore.ArrayUnion([1])})
+
+        doc = fs.collection('foo').document('first').get().to_dict()
+        self.assertEqual(doc, {'arr': [1], 'spicy': 'tuna'})
